@@ -1,5 +1,5 @@
 <template>
-  <div class="tp-footer-citation pt-4 pb-2 break-words">
+  <div class="tp-footer-citation pt-4 pb-2 break-all">
     {{ project_authors }}
     <ClientOnly>
       <span v-html="store.nextAuthor" />
@@ -11,7 +11,7 @@
     <span v-if="currentUrl">
       at
       <a
-        class="text-secondary-color"
+        class="text-secondary-light font-bold"
         :href="currentUrl"
       >
         {{ currentUrl }}

@@ -7,7 +7,8 @@
           legend=""
       />
     </ClientOnly>
-    <VCardHeader class="flex justify-between items-center">
+    <VCardHeader>
+      <div class="flex justify-between items-center">
       <h2 class="text-md">
         {{ (void (isSinglePage = typeof total === 'number' && total < perPage && page === 1)) }}
         {{ (void (isLoaded = Array.isArray(inventoryDWC))) }}
@@ -60,7 +61,15 @@
               />
             <span v-else v-html="'>>'" class="ml-2"/>
       </p>
-      <PanelDropdown panel-key="panel:specimens" />
+        <PanelDropdown panel-key="panel:specimens" />
+      </div>
+      <div v-if="enableSpecimenTags" class="mt-4">
+        <MultiSelectTags
+          v-model="selectedTagIds"
+          :tags="availableTags"
+          label="Filter by tags"
+        />
+      </div>
     </VCardHeader>
     <VCardContent class="text-sm">
       <p v-if="typeof inventoryDWC === 'string'" v-html="inventoryDWC"/>
@@ -85,6 +94,8 @@ import PanelDropdown from '../PanelDropdown.vue'
 import { useOtuPageRequest } from "@/modules/otus/helpers/useOtuPageRequest.js"
 import TaxonWorks from "@/modules/otus/services/TaxonWorks.js"
 import SpecimenSummary from "@/modules/otus/components/Panel/PanelSpecimens/SpecimenSummary.vue"
+import MultiSelectTags from '@/components/MultiSelect/MultiSelectTags.vue'
+import { useSpecimenTags } from '@/modules/otus/composables/useSpecimenTags'
 
 const props = defineProps({
   otuId: {
@@ -101,6 +112,24 @@ const isLoading = ref({dwc: false, gallery: false, notes: false, tags: false})
 const page = ref(1)
 const perPage = ref(20)
 const total = ref("???")
+
+// Feature flag for specimen tag filtering
+const enableSpecimenTags = __APP_ENV__.enable_specimen_tags || false
+
+// Initialize tag helpers conditionally
+const tagHelpers = enableSpecimenTags ? useSpecimenTags() : null
+
+// Use tag helpers if available, otherwise use defaults
+const availableTags = tagHelpers?.availableTags || ref([])
+const selectedTagIds = tagHelpers?.selectedTagIds || ref([])
+const loadTags = tagHelpers?.loadTags || (() => {})
+const getFilteredSpecimens = tagHelpers?.getFilteredSpecimens ||
+  ((otuId, options) => TaxonWorks.getDescendantsDarwinCore(otuId, options))
+
+// Load tags when component mounts (only if feature is enabled)
+if (enableSpecimenTags && loadTags) {
+  loadTags()
+}
 
 const getSpecimenImages = (specimen) => {
   return !inventoryGallery.value ? [] : inventoryGallery.value.filter(
@@ -127,7 +156,7 @@ const getTags = (specimen) => {
 }
 
 watch(
-  () => [props.otuId , page.value],
+  () => [props.otuId, page.value, selectedTagIds.value],
   async () => {
     if (!props.otuId) {
       inventoryDWC.value = 'No OTU specified.'
@@ -135,10 +164,16 @@ watch(
     }
 
     isLoading.value = {...isLoading.value, dwc: true}
-    useOtuPageRequest('panel:specimens', () =>
-      TaxonWorks.getDescendantsDarwinCore(
+    
+    // Create cache key that includes selected tags
+    const cacheKey = selectedTagIds.value.length > 0 
+      ? `panel:specimens:${selectedTagIds.value.join(',')}` 
+      : 'panel:specimens'
+    
+    useOtuPageRequest(cacheKey, () =>
+      getFilteredSpecimens(
           props.otuId,
-          {per: perPage.value, page: page.value},
+          {per: perPage.value, page: page.value}
       )
     ).then(({data, headers}) => {
       // console.log({panel: "specimens", headers, data})
